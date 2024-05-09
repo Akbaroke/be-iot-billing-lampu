@@ -8,7 +8,8 @@ import cron from 'node-cron';
 dotenv.config();
 const app = express();
 
-const { CLIENT_URL, SERVER_PORT, MQTT_USERNAME, MQTT_PASSWORD } = process.env;
+const { CLIENT_URL, SERVER_PORT, MQTT_USERNAME, MQTT_PASSWORD, MQTT_TOPIC } =
+  process.env;
 const validNumbers = [1, 2, 3, 4];
 
 app.use(cors({ credentials: true, origin: CLIENT_URL }));
@@ -18,7 +19,7 @@ const protocol = 'mqtt';
 const host = 'broker.emqx.io';
 const port = '1883';
 const clientId = `mqtt_${Math.random().toString(16).slice(3)}`;
-const topic = 'lampu';
+const topic = MQTT_TOPIC;
 
 const connectUrl = `${protocol}://${host}:${port}`;
 
@@ -68,7 +69,7 @@ app.get('/', async (req, res) => {
 
 app.get('/data', async (req, res) => {
   try {
-    const rawData = fs.readFileSync('../data.json');
+    const rawData = fs.readFileSync('./data.json');
     const jsonData = JSON.parse(rawData);
 
     res.status(200).json({
@@ -89,7 +90,7 @@ app.get('/data', async (req, res) => {
 app.get('/data/:number', async (req, res) => {
   const { number } = req.params;
   try {
-    const rawData = fs.readFileSync('../data.json');
+    const rawData = fs.readFileSync('./data.json');
     const jsonData = JSON.parse(rawData);
     const lampData = jsonData.find((lamp) => lamp.number === parseInt(number));
 
@@ -160,7 +161,7 @@ app.post('/waktu', async (req, res) => {
     }
 
     // Baca data dari file JSON
-    const rawData = fs.readFileSync('../data.json');
+    const rawData = fs.readFileSync('./data.json');
     const jsonData = JSON.parse(rawData);
 
     // Cek apakah nomor sudah ada di data.json
@@ -204,7 +205,7 @@ app.post('/waktu', async (req, res) => {
     await req.mqttPublish(topic, `{ "number": ${number}, "status": true }`);
 
     // Simpan data kembali ke file JSON
-    fs.writeFileSync('../data.json', JSON.stringify(jsonData));
+    fs.writeFileSync('./data.json', JSON.stringify(jsonData));
   } catch (error) {
     console.error('Error:', error);
     res
@@ -230,7 +231,7 @@ app.post('/stop', async (req, res) => {
     }
 
     // Baca data dari file JSON
-    const rawData = fs.readFileSync('../data.json');
+    const rawData = fs.readFileSync('./data.json');
     const jsonData = JSON.parse(rawData);
 
     // Temukan lampu dengan nomor yang sesuai dan hapus dari data.json
@@ -239,7 +240,7 @@ app.post('/stop', async (req, res) => {
       jsonData.splice(index, 1);
 
       // Simpan data terbaru ke file JSON setelah menghapus lampu yang akan dihentikan
-      fs.writeFileSync('../data.json', JSON.stringify(jsonData));
+      fs.writeFileSync('./data.json', JSON.stringify(jsonData));
 
       // Matikan lampu
       req.mqttPublish(topic, `{ "number": ${number}, "status": false }`);
@@ -269,7 +270,7 @@ app.post('/stop', async (req, res) => {
 app.delete('/reset', async (req, res) => {
   try {
     // Hapus semua data.json
-    fs.writeFileSync('../data.json', '[]');
+    fs.writeFileSync('./data.json', '[]');
 
     // Matikan semua lampu
     req.mqttPublish(topic, `{ "number": 0, "status": false }`);
@@ -292,7 +293,7 @@ app.delete('/reset', async (req, res) => {
 // Cronjob
 cron.schedule('* * * * *', () => {
   // Mengecek semua expired lampu
-  const rawData = fs.readFileSync('../data.json');
+  const rawData = fs.readFileSync('./data.json');
   let jsonData = JSON.parse(rawData);
   const currentTimestamp = new Date().getTime();
 
@@ -318,7 +319,7 @@ cron.schedule('* * * * *', () => {
     });
 
     // Simpan data yang diperbarui ke file JSON
-    fs.writeFileSync('../data.json', JSON.stringify(updatedData));
+    fs.writeFileSync('./data.json', JSON.stringify(updatedData));
   } catch (error) {
     console.log(error);
   }
