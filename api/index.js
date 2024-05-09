@@ -2,8 +2,14 @@ import express from 'express';
 import mqtt from 'mqtt';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import cron from 'node-cron';
+import {
+  createData,
+  deleteAllData,
+  deleteData,
+  getData,
+  updateData,
+} from './service.js';
 
 dotenv.config();
 const app = express();
@@ -47,6 +53,7 @@ app.use(function (req, res, next) {
   req.mqttPublish = function (topic, message) {
     mqtt_client.publish(topic, message);
   };
+  console.log('Action To MQTT');
 
   next();
 });
@@ -54,23 +61,20 @@ app.use(function (req, res, next) {
 app.use(express.json());
 
 app.get('/', async (req, res) => {
-  res
-    .json({
-      status: 'success',
-      message: 'Server sedang berjalan.',
-      data: {
-        get: ['/', '/data', '/data:number'],
-        post: ['/lampu', '/waktu', '/stop'],
-        delete: ['/reset'],
-      },
-    })
-    .status(200);
+  res.status(200).json({
+    status: 'success',
+    message: 'Server sedang berjalan.',
+    data: {
+      get: ['/', '/data', '/data:number'],
+      post: ['/lampu', '/waktu', '/stop'],
+      delete: ['/reset'],
+    },
+  });
 });
 
 app.get('/data', async (req, res) => {
   try {
-    const rawData = fs.readFileSync('./data.json');
-    const jsonData = JSON.parse(rawData);
+    const jsonData = await getData();
 
     res.status(200).json({
       status: 'success',
@@ -90,8 +94,7 @@ app.get('/data', async (req, res) => {
 app.get('/data/:number', async (req, res) => {
   const { number } = req.params;
   try {
-    const rawData = fs.readFileSync('./data.json');
-    const jsonData = JSON.parse(rawData);
+    const jsonData = await getData();
     const lampData = jsonData.find((lamp) => lamp.number === parseInt(number));
 
     if (lampData) {
@@ -125,24 +128,20 @@ app.post('/lampu', async (req, res) => {
       `{ "number": ${number}, "status": ${status} }`
     );
 
-    res
-      .json({
-        status: 'success',
-        message: `${status ? 'Menyalakan' : 'Mematikan'} ${
-          number === 0 ? 'Semua Lampu' : 'Lampu No.' + number
-        }`,
-        data: null,
-      })
-      .status(200);
+    res.status(200).json({
+      status: 'success',
+      message: `${status ? 'Menyalakan' : 'Mematikan'} ${
+        number === 0 ? 'Semua Lampu' : 'Lampu No.' + number
+      }`,
+      data: null,
+    });
   } catch (error) {
     console.error('Error in MQTT operation:', error);
-    res
-      .json({
-        status: 'failed',
-        message: 'Server bermasalah.',
-        data: null,
-      })
-      .status(500);
+    res.status(500).json({
+      status: 'failed',
+      message: 'Server bermasalah.',
+      data: null,
+    });
   }
 });
 
@@ -151,18 +150,15 @@ app.post('/waktu', async (req, res) => {
   try {
     // Validasi nomor
     if (!validNumbers.includes(number)) {
-      return res
-        .json({
-          status: 'failed',
-          message: 'Nomor tidak valid.',
-          data: null,
-        })
-        .status(400);
+      return res.status(400).json({
+        status: 'failed',
+        message: 'Nomor tidak valid.',
+        data: null,
+      });
     }
 
-    // Baca data dari file JSON
-    const rawData = fs.readFileSync('./data.json');
-    const jsonData = JSON.parse(rawData);
+    // Baca database
+    const jsonData = await getData();
 
     // Cek apakah nomor sudah ada di data.json
     const index = jsonData.findIndex((item) => item.number === number);
@@ -172,49 +168,44 @@ app.post('/waktu', async (req, res) => {
       const expiredDate = new Date(jsonData[index].expired_at);
       expiredDate.setMinutes(expiredDate.getMinutes() + addTime);
 
-      jsonData[index].expired_at = expiredDate.getTime(); // Ubah kembali ke milidetik
+      // simpan ke database
+      const response = await updateData(jsonData[index].id, {
+        expired_at: expiredDate.getTime(),
+      });
 
-      res
-        .json({
-          status: 'success',
-          message: `Menambah waktu ${addTime} menit berhasil.`,
-          data: jsonData,
-        })
-        .status(201);
+      res.status(201).json({
+        status: 'success',
+        message: `Menambah waktu ${addTime} menit berhasil.`,
+        data: response,
+      });
     } else {
       // Jika belum, tambahkan data baru
       const startAt = datetime.getTime();
       const expiredAt = new Date(startAt);
       expiredAt.setMinutes(expiredAt.getMinutes() + addTime);
 
-      jsonData.push({
+      // simpan ke database
+      const response = await createData({
         number,
         start_at: startAt,
-        expired_at: expiredAt.getTime(), // Ubah kembali ke milidetik
+        expired_at: expiredAt.getTime(),
       });
 
-      res
-        .json({
-          status: 'success',
-          message: `Memulai waktu ${addTime} menit berhasil.`,
-          data: jsonData,
-        })
-        .status(201);
+      res.status(201).json({
+        status: 'success',
+        message: `Memulai waktu ${addTime} menit berhasil.`,
+        data: response,
+      });
     }
 
     await req.mqttPublish(topic, `{ "number": ${number}, "status": true }`);
-
-    // Simpan data kembali ke file JSON
-    fs.writeFileSync('./data.json', JSON.stringify(jsonData));
   } catch (error) {
     console.error('Error:', error);
-    res
-      .json({
-        status: 'failed',
-        message: 'Gagal menginputkan waktu.',
-        data: null,
-      })
-      .status(400);
+    res.status(400).json({
+      status: 'failed',
+      message: 'Gagal menginputkan waktu.',
+      data: null,
+    });
   }
 });
 
@@ -230,17 +221,14 @@ app.post('/stop', async (req, res) => {
       });
     }
 
-    // Baca data dari file JSON
-    const rawData = fs.readFileSync('./data.json');
-    const jsonData = JSON.parse(rawData);
+    // Baca database
+    const jsonData = await getData();
 
     // Temukan lampu dengan nomor yang sesuai dan hapus dari data.json
     const index = jsonData.findIndex((item) => item.number === number);
     if (index !== -1) {
-      jsonData.splice(index, 1);
-
-      // Simpan data terbaru ke file JSON setelah menghapus lampu yang akan dihentikan
-      fs.writeFileSync('./data.json', JSON.stringify(jsonData));
+      // Simpan delete data number
+      const response = await deleteData(jsonData[index].id);
 
       // Matikan lampu
       req.mqttPublish(topic, `{ "number": ${number}, "status": false }`);
@@ -248,7 +236,7 @@ app.post('/stop', async (req, res) => {
       return res.status(200).json({
         status: 'success',
         message: `Berhasil menghentikan waktu lampu No.${number}`,
-        data: null,
+        data: response,
       });
     } else {
       return res.status(400).json({
@@ -269,8 +257,8 @@ app.post('/stop', async (req, res) => {
 
 app.delete('/reset', async (req, res) => {
   try {
-    // Hapus semua data.json
-    fs.writeFileSync('./data.json', '[]');
+    // Hapus semua database
+    const response = await deleteAllData();
 
     // Matikan semua lampu
     req.mqttPublish(topic, `{ "number": 0, "status": false }`);
@@ -278,7 +266,7 @@ app.delete('/reset', async (req, res) => {
     res.status(200).json({
       status: 'success',
       message: 'Sistem berhasil direset.',
-      data: null,
+      data: response,
     });
   } catch (error) {
     console.error('Error:', error);
@@ -291,17 +279,13 @@ app.delete('/reset', async (req, res) => {
 });
 
 // Cronjob
-cron.schedule('* * * * *', () => {
+cron.schedule('* * * * *', async () => {
   // Mengecek semua expired lampu
-  const rawData = fs.readFileSync('./data.json');
-  let jsonData = JSON.parse(rawData);
+  const jsonData = await getData();
   const currentTimestamp = new Date().getTime();
 
-  // Buat array baru untuk menyimpan data yang tidak kadaluarsa
-  const updatedData = [];
-
   try {
-    jsonData.forEach((lamp) => {
+    jsonData.map(async (lamp) => {
       if (lamp.expired_at <= currentTimestamp) {
         console.log(`Lampu No.${lamp.number} telah kadaluwarsa.`);
 
@@ -310,16 +294,12 @@ cron.schedule('* * * * *', () => {
           topic,
           `{ "number": ${lamp.number}, "status": false }`
         );
+        console.log('Action To MQTT');
 
-        // Lampu telah kadaluwarsa, tidak perlu dimasukkan ke dalam updatedData
-      } else {
-        // Lampu masih aktif, masukkan ke dalam updatedData
-        updatedData.push(lamp);
+        // Lampu telah kadaluwarsa di hapus dari database
+        await deleteData(lamp.id);
       }
     });
-
-    // Simpan data yang diperbarui ke file JSON
-    fs.writeFileSync('./data.json', JSON.stringify(updatedData));
   } catch (error) {
     console.log(error);
   }
