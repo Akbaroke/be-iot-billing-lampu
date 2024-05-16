@@ -9,7 +9,7 @@ import {
   deleteData,
   getData,
   updateData,
-} from './service.js';
+} from '../../api/service.js';
 import serverless from 'serverless-http';
 
 dotenv.config();
