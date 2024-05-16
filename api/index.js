@@ -10,7 +10,6 @@ import {
   getData,
   updateData,
 } from './service.js';
-import serverless from 'serverless-http';
 
 dotenv.config();
 const app = express();
@@ -305,8 +304,6 @@ cron.schedule('* * * * *', async () => {
     console.log(error);
   }
 });
-
-export const handler = serverless(api);
 
 app.listen(SERVER_PORT, () =>
   console.log(`Server running at port:${SERVER_PORT}`)
