@@ -14,11 +14,10 @@ import {
 dotenv.config();
 const app = express();
 
-const { CLIENT_URL, SERVER_PORT, MQTT_USERNAME, MQTT_PASSWORD, MQTT_TOPIC } =
-  process.env;
+const { SERVER_PORT, MQTT_USERNAME, MQTT_PASSWORD, MQTT_TOPIC } = process.env;
 const validNumbers = [1, 2, 3, 4];
 
-app.use(cors({ credentials: true, origin: CLIENT_URL }));
+app.use(cors({ credentials: true, origin: '*' }));
 
 // MQTT
 const protocol = 'mqtt';
