@@ -37,17 +37,6 @@ const mqtt_client = mqtt.connect(connectUrl, {
   reconnectPeriod: 1000,
 });
 
-// mqtt_client.on('connect', () => {
-//   console.log('Connected');
-//   mqtt_client.subscribe([topic], () => {
-//     console.log(`Subscribe to topic '${topic}'`);
-//   });
-// });
-
-// mqtt_client.on('message', (topic, payload) => {
-//   console.log('Received Message:', topic, payload.toString());
-// });
-
 app.use(function (req, res, next) {
   req.mqttPublish = function (topic, message) {
     mqtt_client.publish(topic, message);
@@ -277,8 +266,8 @@ app.delete('/reset', async (req, res) => {
   }
 });
 
-// Cronjob
-cron.schedule('* * * * *', async () => {
+// Cronjob untuk setiap 20 detik
+const scheduleTask = async () => {
   // Mengecek semua expired lampu
   const jsonData = await getData();
   const currentTimestamp = new Date().getTime();
@@ -295,13 +284,20 @@ cron.schedule('* * * * *', async () => {
         );
         console.log('Action To MQTT');
 
-        // Lampu telah kadaluwarsa di hapus dari database
+        // Lampu telah kadaluwarsa dihapus dari database
         await deleteData(lamp.id);
       }
     });
   } catch (error) {
     console.log(error);
   }
+};
+
+// Menjalankan setiap menit
+cron.schedule('* * * * *', async () => {
+  await scheduleTask();
+  // Menjalankan lagi setelah 10 detik
+  setTimeout(scheduleTask, 20000);
 });
 
 app.listen(SERVER_PORT, () =>
